@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem; // Required for the new Input System
 
 public class CannonController : MonoBehaviour
 {
@@ -10,12 +11,13 @@ public class CannonController : MonoBehaviour
     public Transform firePoint;
 
     [Tooltip("The force applied to the ball when shooting")]
-    public float shootForce = 1000f;
+    public float shootForce = 50f; // Lowered default since Impulse is much stronger
 
     void Update()
     {
-        // Check for Spacebar input
-        if (Input.GetKeyDown(KeyCode.Space))
+        // Check for Spacebar using the New Input System
+        // We check 'Keyboard.current != null' to prevent errors if no keyboard is connected
+        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
         {
             Shoot();
         }
@@ -23,6 +25,12 @@ public class CannonController : MonoBehaviour
 
     void Shoot()
     {
+        if (firePoint == null)
+        {
+            Debug.LogError("FirePoint is not assigned!");
+            return;
+        }
+
         // 1. Instantiate the ball at the fire point
         // Using the firePoint's rotation ensures it shoots in the direction the cannon is facing
         GameObject currentBall = Instantiate(cannonballPrefab, firePoint.position, firePoint.rotation);
@@ -33,7 +41,8 @@ public class CannonController : MonoBehaviour
         if (rb != null)
         {
             // 3. Add explosive force in the forward direction
-            rb.AddForce(firePoint.forward * shootForce);
+            // Changed to ForceMode.Impulse for instant velocity change
+            rb.AddForce(firePoint.forward * shootForce, ForceMode.Impulse);
         }
         else
         {
