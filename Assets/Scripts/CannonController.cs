@@ -11,7 +11,7 @@ public class CannonController : MonoBehaviour
     public Transform firePoint;
 
     [Tooltip("The force applied to the ball when shooting")]
-    public float shootForce = 50f; // Lowered default since Impulse is much stronger
+    public float shootForce = 1000f; // Lowered default since Impulse is much stronger
 
     void Update()
     {

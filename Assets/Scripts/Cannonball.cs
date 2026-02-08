@@ -5,25 +5,48 @@ public class Cannonball : MonoBehaviour
     [Tooltip("Time in seconds before the ball destroys itself automatically")]
     public float lifeTime = 5f;
 
+    private Rigidbody rb;
+    private Vector3 velocityBeforePhysics;
+
     void Start()
     {
-        // Destroy the ball after 'lifeTime' seconds to keep the hierarchy clean
+        rb = GetComponent<Rigidbody>();
         Destroy(gameObject, lifeTime);
     }
 
-    // This event triggers when the ball hits something solid
+    void FixedUpdate()
+    {
+        // Cache velocity every physics step. 
+        // FixedUpdate runs before collision resolution, so this captures the speed 
+        // right before it hits the wall and gets stopped by physics.
+        if (rb != null)
+        {
+            // Updated for Unity 6+: velocity -> linearVelocity
+            velocityBeforePhysics = rb.linearVelocity;
+        }
+    }
+
     void OnCollisionEnter(Collision collision)
     {
-        // Check if the object we hit has the DestructibleWall script
-        DestructibleWall wall = collision.gameObject.GetComponent<DestructibleWall>();
+        // Debug: Verify collision is happening at all
+        Debug.Log($"Cannonball hit: {collision.gameObject.name}");
+
+        // Improved: Look for the script on the object hit OR its parents
+        // This fixes issues where the collider is on a child mesh
+        DestructibleWall wall = collision.gameObject.GetComponentInParent<DestructibleWall>();
 
         if (wall != null)
         {
-            // Trigger the wall break logic
             wall.BreakWall();
 
-            // Optional: Destroy the ball immediately upon impact
-            Destroy(gameObject);
+            // Restore the velocity to what it was before hitting the solid wall.
+            // This makes the ball "ignore" the stop caused by the solid wall 
+            // and continue through to hit the debris.
+            if (rb != null)
+            {
+                // Updated for Unity 6+: velocity -> linearVelocity
+                rb.linearVelocity = velocityBeforePhysics;
+            }
         }
     }
 }

@@ -19,7 +19,7 @@ public class DestructibleWall : MonoBehaviour
 
     void Start()
     {
-        // Ensure correct initial state
+        // Reset state on start
         if (solidWall != null) solidWall.SetActive(true);
         if (fracturedWall != null) fracturedWall.SetActive(false);
     }
@@ -29,19 +29,24 @@ public class DestructibleWall : MonoBehaviour
         if (isBroken) return; // Prevent double breaking
         isBroken = true;
 
-        // 1. Swap the models
-        if (solidWall != null) solidWall.SetActive(false);
-        if (fracturedWall != null) fracturedWall.SetActive(true);
+        Debug.Log("Wall logic triggered: Breaking now!");
 
-        // 2. Add physics force to the broken pieces
-        // This assumes the fracturedWall has children with Rigidbodies
-        foreach (Transform piece in fracturedWall.transform)
+        // 1. Hide solid wall
+        if (solidWall != null) solidWall.SetActive(false);
+
+        // 2. Show fractured wall and apply force
+        if (fracturedWall != null)
         {
-            Rigidbody rb = piece.GetComponent<Rigidbody>();
-            if (rb != null)
+            fracturedWall.SetActive(true);
+
+            // Apply explosion force to all children (the debris pieces)
+            foreach (Transform piece in fracturedWall.transform)
             {
-                // Add explosion force to make the wall pieces fly outward
-                rb.AddExplosionForce(explosionForce, transform.position, explosionRadius);
+                Rigidbody rb = piece.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.AddExplosionForce(explosionForce, transform.position, explosionRadius);
+                }
             }
         }
     }
