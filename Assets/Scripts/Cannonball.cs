@@ -5,6 +5,9 @@ public class Cannonball : MonoBehaviour
     [Tooltip("Time in seconds before the ball destroys itself automatically")]
     public float lifeTime = 5f;
 
+    [Tooltip("Optimization: Only check for the wall script if the object has this tag.")]
+    public string targetTag = "Destructible";
+
     private Rigidbody rb;
     private Vector3 velocityBeforePhysics;
 
@@ -29,7 +32,11 @@ public class Cannonball : MonoBehaviour
     void OnCollisionEnter(Collision collision)
     {
         // Debug: Verify collision is happening at all
-        Debug.Log($"Cannonball hit: {collision.gameObject.name}");
+        //Debug.Log($"Cannonball hit: {collision.gameObject.name}");
+
+        // GetComponentInParent is expensive. We only run it if the tag matches.
+        // Ensure the Wall objects are tagged "Destructible" (or match this string)
+        //if (!collision.gameObject.CompareTag(targetTag)) return;
 
         // Improved: Look for the script on the object hit OR its parents
         // This fixes issues where the collider is on a child mesh

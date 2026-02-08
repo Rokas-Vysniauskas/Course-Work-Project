@@ -29,7 +29,7 @@ public class DestructibleWall : MonoBehaviour
         if (isBroken) return; // Prevent double breaking
         isBroken = true;
 
-        Debug.Log("Wall logic triggered: Breaking now!");
+        //Debug.Log("Wall logic triggered: Breaking now!");
 
         // 1. Hide solid wall
         if (solidWall != null) solidWall.SetActive(false);
