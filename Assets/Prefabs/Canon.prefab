@@ -130,7 +130,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: '::'
   cannonballPrefab: {fileID: 1103614582672888142, guid: 79c56e342991e24489089f123473f6a4, type: 3}
   firePoint: {fileID: 2208428310817355483}
-  shootForce: 1000
+  shootForce: 2000
 --- !u!1 &6416863153389923282
 GameObject:
   m_ObjectHideFlags: 0

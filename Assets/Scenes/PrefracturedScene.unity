@@ -427,8 +427,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: '::'
   solidWall: {fileID: 529002957}
   fracturedWall: {fileID: 1682191465}
-  explosionForce: 500
-  explosionRadius: 2
+  explosionForce: 100
+  explosionRadius: 1
 --- !u!1 &1308374377
 GameObject:
   m_ObjectHideFlags: 0

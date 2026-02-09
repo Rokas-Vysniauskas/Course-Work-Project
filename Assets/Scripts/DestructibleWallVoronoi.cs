@@ -12,12 +12,15 @@ public class DestructibleWallVoronoi : MonoBehaviour
     public float impactBias = 0.75f;
 
     [Header("Explosion Settings")]
-    public float explosionForce = 10f;
+    public float explosionForce = 500f;
     public float explosionRadius = 3f;
 
     [Header("Materials")]
     [Tooltip("Material for the outside of the wall")]
     public Material surfaceMaterial;
+
+    [Tooltip("Material for the inside cut faces")]
+    public Material interiorMaterial;
 
     // Internal state
     private bool isBroken = false;
@@ -29,9 +32,16 @@ public class DestructibleWallVoronoi : MonoBehaviour
         wallRenderer = GetComponent<Renderer>();
         wallMeshFilter = GetComponent<MeshFilter>();
 
+        // Auto-assign surface material if missing
         if (surfaceMaterial == null && wallRenderer != null)
         {
             surfaceMaterial = wallRenderer.sharedMaterial;
+        }
+
+        // Fallback: If no interior material is set, use the surface material
+        if (interiorMaterial == null)
+        {
+            interiorMaterial = surfaceMaterial;
         }
     }
 
@@ -42,6 +52,14 @@ public class DestructibleWallVoronoi : MonoBehaviour
     {
         if (isBroken) return;
         isBroken = true;
+
+        // 0. Get Mass from Rigidbody (if exists) to conserve mass
+        float totalMass = 1.0f;
+        Rigidbody wallRb = GetComponent<Rigidbody>();
+        if (wallRb != null)
+        {
+            totalMass = wallRb.mass;
+        }
 
         // 1. Get Local Dimensions from Mesh
         Bounds bounds = new Bounds(Vector3.zero, Vector3.one);
@@ -66,11 +84,13 @@ public class DestructibleWallVoronoi : MonoBehaviour
         List<List<Vector2>> cells = GenerateVoronoiCells(sites, bounds);
 
         // 5. Create Shards (Extrude using Z bounds)
-        CreateShards(cells, bounds);
+        CreateShards(cells, bounds, totalMass);
 
         // 6. Disable Original Wall
         if (wallRenderer != null) wallRenderer.enabled = false;
         if (GetComponent<Collider>() != null) GetComponent<Collider>().enabled = false;
+        // Optional: Disable original RB physics to prevent ghost interactions
+        if (wallRb != null) wallRb.isKinematic = true;
 
         // Cleanup original object later
         Destroy(gameObject, 10f);
@@ -167,7 +187,7 @@ public class DestructibleWallVoronoi : MonoBehaviour
         return p1 + lineDir * t;
     }
 
-    void CreateShards(List<List<Vector2>> cells, Bounds b)
+    void CreateShards(List<List<Vector2>> cells, Bounds b, float totalMass)
     {
         GameObject shardsRoot = new GameObject("Shards_Root");
         shardsRoot.transform.position = transform.position;
@@ -177,21 +197,59 @@ public class DestructibleWallVoronoi : MonoBehaviour
         float zMin = b.min.z;
         float zMax = b.max.z;
 
+        // 1. Calculate Areas for Mass Distribution (Volume based)
+        List<float> cellAreas = new List<float>();
+        float totalArea = 0f;
+
         foreach (var cell in cells)
         {
-            // Pass the total cell count to the mesh creator for mass calculation
-            CreateShardMesh(cell, zMin, zMax, shardsRoot.transform, cells.Count);
+            float area = CalculatePolygonArea(cell);
+            cellAreas.Add(area);
+            totalArea += area;
+        }
+
+        // Prevent divide by zero if something goes wrong
+        if (totalArea <= 1e-5f) totalArea = 1f;
+
+        // 2. Create Shards
+        for (int i = 0; i < cells.Count; i++)
+        {
+            // Mass is proportional to area (volume, since thickness is constant)
+            float massPercentage = cellAreas[i] / totalArea;
+            float shardMass = totalMass * massPercentage;
+
+            // Safety clamp for very small shards to avoid physics glitches
+            if (shardMass < 0.001f) shardMass = 0.001f;
+
+            CreateShardMesh(cells[i], zMin, zMax, shardsRoot.transform, shardMass);
         }
     }
 
-    void CreateShardMesh(List<Vector2> poly, float zMin, float zMax, Transform parent, int totalShards)
+    // Shoelace formula to calculate 2D polygon area
+    float CalculatePolygonArea(List<Vector2> poly)
+    {
+        if (poly.Count < 3) return 0f;
+        float area = 0f;
+        for (int i = 0; i < poly.Count; i++)
+        {
+            Vector2 p1 = poly[i];
+            Vector2 p2 = poly[(i + 1) % poly.Count];
+            area += (p1.x * p2.y) - (p2.x * p1.y);
+        }
+        return Mathf.Abs(area * 0.5f);
+    }
+
+    void CreateShardMesh(List<Vector2> poly, float zMin, float zMax, Transform parent, float mass)
     {
         List<Vector3> verts = new List<Vector3>();
         List<Vector3> norms = new List<Vector3>();
         List<Vector2> uvs = new List<Vector2>();
-        List<int> tris = new List<int>();
 
-        // 1. Front Face
+        // Split triangles by submesh index
+        List<int> surfaceTris = new List<int>(); // Submesh 0 (Front/Back)
+        List<int> interiorTris = new List<int>(); // Submesh 1 (Sides)
+
+        // 1. Front Face (Surface)
         int frontStart = verts.Count;
         for (int i = 0; i < poly.Count; i++)
         {
@@ -201,12 +259,12 @@ public class DestructibleWallVoronoi : MonoBehaviour
         }
         for (int i = 1; i < poly.Count - 1; i++)
         {
-            tris.Add(frontStart);
-            tris.Add(frontStart + i + 1);
-            tris.Add(frontStart + i);
+            surfaceTris.Add(frontStart);
+            surfaceTris.Add(frontStart + i + 1);
+            surfaceTris.Add(frontStart + i);
         }
 
-        // 2. Back Face
+        // 2. Back Face (Surface)
         int backStart = verts.Count;
         for (int i = 0; i < poly.Count; i++)
         {
@@ -216,12 +274,12 @@ public class DestructibleWallVoronoi : MonoBehaviour
         }
         for (int i = 1; i < poly.Count - 1; i++)
         {
-            tris.Add(backStart);
-            tris.Add(backStart + i);
-            tris.Add(backStart + i + 1);
+            surfaceTris.Add(backStart);
+            surfaceTris.Add(backStart + i);
+            surfaceTris.Add(backStart + i + 1);
         }
 
-        // 3. Sides
+        // 3. Sides (Interior)
         int sideStart = verts.Count;
         for (int i = 0; i < poly.Count; i++)
         {
@@ -238,29 +296,39 @@ public class DestructibleWallVoronoi : MonoBehaviour
             verts.Add(v4); norms.Add(normal); uvs.Add(Vector2.up);
 
             int baseIdx = sideStart + (i * 4);
-            tris.Add(baseIdx); tris.Add(baseIdx + 2); tris.Add(baseIdx + 1);
-            tris.Add(baseIdx); tris.Add(baseIdx + 3); tris.Add(baseIdx + 2);
+            // Add side triangles to interiorTris list
+            // FIX: Swapped winding order (0->1->2 and 0->2->3) for correct outward facing
+            interiorTris.Add(baseIdx); interiorTris.Add(baseIdx + 1); interiorTris.Add(baseIdx + 2);
+            interiorTris.Add(baseIdx); interiorTris.Add(baseIdx + 2); interiorTris.Add(baseIdx + 3);
         }
 
         Mesh mesh = new Mesh();
         mesh.vertices = verts.ToArray();
-        mesh.triangles = tris.ToArray();
         mesh.normals = norms.ToArray();
         mesh.uv = uvs.ToArray();
+
+        // Define 2 SubMeshes
+        mesh.subMeshCount = 2;
+        mesh.SetTriangles(surfaceTris, 0); // SubMesh 0: Surface
+        mesh.SetTriangles(interiorTris, 1); // SubMesh 1: Interior
+
         mesh.RecalculateBounds();
 
         GameObject shard = new GameObject("Shard");
         shard.transform.SetParent(parent, false);
 
         shard.AddComponent<MeshFilter>().mesh = mesh;
-        shard.AddComponent<MeshRenderer>().material = surfaceMaterial;
+        MeshRenderer mr = shard.AddComponent<MeshRenderer>();
+
+        // Assign Material Array
+        mr.materials = new Material[] { surfaceMaterial, interiorMaterial };
 
         MeshCollider mc = shard.AddComponent<MeshCollider>();
         mc.convex = true;
         mc.sharedMesh = mesh;
 
         Rigidbody rb = shard.AddComponent<Rigidbody>();
-        rb.mass = 1.0f / totalShards;
+        rb.mass = mass; // Set calculated mass
 
         rb.AddExplosionForce(explosionForce, transform.position, explosionRadius);
     }
