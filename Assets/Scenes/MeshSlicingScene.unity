@@ -567,7 +567,7 @@ PrefabInstance:
       objectReference: {fileID: 1103614582672888142, guid: f98a17f1ac3465b4dbd26c9f482c907e, type: 3}
     - target: {fileID: 6181029461514629721, guid: 330b9cef6f0f4ad4caa5fb9261fab8ac, type: 3}
       propertyPath: m_Name
-      value: Canon
+      value: Cannon
       objectReference: {fileID: 0}
     - target: {fileID: 8255351110651122379, guid: 330b9cef6f0f4ad4caa5fb9261fab8ac, type: 3}
       propertyPath: m_LocalPosition.x
