@@ -128,7 +128,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a3f210d64b6a1334fb0a5acd2b7a00a5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
-  cannonballPrefab: {fileID: 1103614582672888142, guid: 79c56e342991e24489089f123473f6a4, type: 3}
+  cannonballPrefab: {fileID: 1103614582672888142, guid: f98a17f1ac3465b4dbd26c9f482c907e, type: 3}
   firePoint: {fileID: 2208428310817355483}
   shootForce: 2000
 --- !u!1 &6416863153389923282
