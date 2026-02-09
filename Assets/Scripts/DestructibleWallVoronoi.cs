@@ -6,7 +6,7 @@ public class DestructibleWallVoronoi : MonoBehaviour
     [Header("Voronoi Settings")]
     [Tooltip("How many pieces to break into. Higher = more lag but more detail.")]
     public int voronoiSiteCount = 50;
-
+    
     [Tooltip("How much the pieces concentrate at the impact point (0 = uniform, 1 = highly clustered).")]
     [Range(0f, 1f)]
     public float impactBias = 0.75f;
