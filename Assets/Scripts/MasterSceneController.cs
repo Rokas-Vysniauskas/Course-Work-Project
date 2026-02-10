@@ -19,6 +19,7 @@ public class MasterSceneController : MonoBehaviour
     [Header("Controls (New Input System)")]
     [SerializeField] private Key nextSceneKey = Key.D;
     [SerializeField] private Key previousSceneKey = Key.A;
+    [SerializeField] private Key sceneReloadKey = Key.R;
 
     // Internal state
     private int _currentContentSceneIndex = -1;
@@ -60,6 +61,10 @@ public class MasterSceneController : MonoBehaviour
         else if (Keyboard.current[previousSceneKey].wasPressedThisFrame)
         {
             SwitchScene(-1); // Move backward
+        }
+        else if (Keyboard.current[sceneReloadKey].wasPressedThisFrame)
+        {
+            SwitchScene(0); // Reload current scene
         }
     }
 

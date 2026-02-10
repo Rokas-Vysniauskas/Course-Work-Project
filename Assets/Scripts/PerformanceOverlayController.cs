@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
 using TMPro;
 using Unity.Profiling;
 using System.Text;
@@ -15,6 +16,10 @@ using System.Linq;
 /// </summary>
 public class PerformanceOverlayController : MonoBehaviour
 {
+    [Header("Input Settings")]
+    [Tooltip("Key to reset the FPS and Memory statistics.")]
+    public Key resetKey = Key.O;
+
     [Header("UI References (Optional - Auto-creates if null)")]
     public Canvas mainCanvas;
     public TextMeshProUGUI statsText;
@@ -26,7 +31,9 @@ public class PerformanceOverlayController : MonoBehaviour
     public int sampleSize = 1000;
 
     [Header("Geometry Settings")]
-    [Tooltip("Tag to search for geometry calculations (e.g., Destructible walls).")]
+    [Tooltip("If true, only counts objects with the specified tag. If false, counts ALL geometry in the additive scene (catches untagged shards).")]
+    public bool useTagFilter = false;
+    [Tooltip("Tag to search for geometry calculations (e.g., Destructible walls). Only used if 'Use Tag Filter' is true.")]
     public string targetTag = "Destructible";
     [Tooltip("How often to recalculate geometry (in seconds). Set to 0 to disable auto-refresh.")]
     public float geometryRefreshRate = 5.0f;
@@ -106,6 +113,12 @@ public class PerformanceOverlayController : MonoBehaviour
 
     void Update()
     {
+        // 0. Handle Input (Reset Stats)
+        if (Keyboard.current != null && Keyboard.current[resetKey].wasPressedThisFrame)
+        {
+            ResetStats();
+        }
+
         // 1. Collect Frame Metrics
         float dt = Time.unscaledDeltaTime;
         float dtMs = dt * 1000.0f;
@@ -136,6 +149,22 @@ public class PerformanceOverlayController : MonoBehaviour
         }
     }
 
+    // --- State Management ---
+
+    public void ResetStats()
+    {
+        _frameTimes.Clear();
+
+        _ramMin = long.MaxValue; _ramMax = 0;
+        _ramAvgSum = 0; _ramSampleCount = 0;
+
+        _vramMin = long.MaxValue; _vramMax = 0;
+        _vramAvgSum = 0; _vramSampleCount = 0;
+
+        // Trigger an immediate UI refresh to show cleared stats (optional)
+        _uiTimer = uiRefreshRate;
+    }
+
     // --- Event Handling ---
 
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -155,53 +184,74 @@ public class PerformanceOverlayController : MonoBehaviour
         _currentSceneTriangles = 0;
         _currentSceneVertices = 0;
 
-        if (string.IsNullOrEmpty(targetTag)) return;
-
-        GameObject[] targets;
-        try
+        // METHOD 1: Filter by Tag (Original Method)
+        if (useTagFilter)
         {
-            targets = GameObject.FindGameObjectsWithTag(targetTag);
-        }
-        catch (UnityException)
-        {
-            // Tag likely doesn't define in TagManager
-            return;
-        }
+            if (string.IsNullOrEmpty(targetTag)) return;
 
-        foreach (var obj in targets)
-        {
-            // Optional: Strict check to ensure we only count objects in the Additive Scene
-            // If you want to count ALL destructibles regardless of scene, remove this check.
-            if (obj.scene.name != _currentSceneName && _currentSceneName != "Waiting...") continue;
-
-            MeshFilter[] meshFilters = obj.GetComponentsInChildren<MeshFilter>(true);
-            foreach (var mf in meshFilters)
+            GameObject[] targets;
+            try
             {
-                if (mf.sharedMesh != null)
-                {
-                    // FIXED: Using GetIndexCount instead of .triangles allows access 
-                    // on meshes where "Read/Write Enabled" is false.
-                    // Loop through submeshes (materials) to get total indices.
-                    for (int i = 0; i < mf.sharedMesh.subMeshCount; i++)
-                    {
-                        _currentSceneTriangles += (mf.sharedMesh.GetIndexCount(i) / 3);
-                    }
-                    _currentSceneVertices += mf.sharedMesh.vertexCount;
-                }
+                targets = GameObject.FindGameObjectsWithTag(targetTag);
+            }
+            catch (UnityException)
+            {
+                return;
             }
 
-            SkinnedMeshRenderer[] skinnedMeshes = obj.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-            foreach (var smr in skinnedMeshes)
+            foreach (var obj in targets)
             {
-                if (smr.sharedMesh != null)
+                // Strict check: only count objects in the Additive Scene
+                if (obj.scene.name != _currentSceneName && _currentSceneName != "Waiting...") continue;
+
+                CountObjectGeometry(obj);
+            }
+        }
+        // METHOD 2: Scan Additive Scene Roots (Catches untagged shards)
+        else
+        {
+            if (_currentSceneName == "Waiting...") return;
+
+            Scene scene = SceneManager.GetSceneByName(_currentSceneName);
+            if (!scene.IsValid() || !scene.isLoaded) return;
+
+            GameObject[] roots = scene.GetRootGameObjects();
+            foreach (var root in roots)
+            {
+                CountObjectGeometry(root);
+            }
+        }
+    }
+
+    void CountObjectGeometry(GameObject obj)
+    {
+        // CHANGED: Passed 'false' to GetComponentsInChildren to only include Active objects.
+        // This ensures stats reflect the current scene state (e.g. after a wall fractures and shards enable).
+        MeshFilter[] meshFilters = obj.GetComponentsInChildren<MeshFilter>(false);
+        foreach (var mf in meshFilters)
+        {
+            if (mf.sharedMesh != null)
+            {
+                // Using GetIndexCount allows access on non-readable meshes
+                for (int i = 0; i < mf.sharedMesh.subMeshCount; i++)
                 {
-                    // FIXED: Same fix for Skinned Meshes
-                    for (int i = 0; i < smr.sharedMesh.subMeshCount; i++)
-                    {
-                        _currentSceneTriangles += (smr.sharedMesh.GetIndexCount(i) / 3);
-                    }
-                    _currentSceneVertices += smr.sharedMesh.vertexCount;
+                    _currentSceneTriangles += (mf.sharedMesh.GetIndexCount(i) / 3);
                 }
+                _currentSceneVertices += mf.sharedMesh.vertexCount;
+            }
+        }
+
+        // CHANGED: Passed 'false' here as well for consistency.
+        SkinnedMeshRenderer[] skinnedMeshes = obj.GetComponentsInChildren<SkinnedMeshRenderer>(false);
+        foreach (var smr in skinnedMeshes)
+        {
+            if (smr.sharedMesh != null)
+            {
+                for (int i = 0; i < smr.sharedMesh.subMeshCount; i++)
+                {
+                    _currentSceneTriangles += (smr.sharedMesh.GetIndexCount(i) / 3);
+                }
+                _currentSceneVertices += smr.sharedMesh.vertexCount;
             }
         }
     }
@@ -236,13 +286,19 @@ public class PerformanceOverlayController : MonoBehaviour
         float currentFps = 1000.0f / (currentDtMs > 0 ? currentDtMs : 0.001f);
         float avgFrameTime = _frameTimes.Average();
 
-        // 1% Low = The frame time that is slower than 99% of all other frames
+        // Sort for Min/Max/1% Low
         var sortedTimes = _frameTimes.OrderBy(t => t).ToList();
+
+        // 1% Low FPS = Frame Time High (Slowest frames)
         int index1Percent = Mathf.FloorToInt(sortedTimes.Count * 0.99f);
         if (index1Percent >= sortedTimes.Count) index1Percent = sortedTimes.Count - 1;
         float frameTime1PercentLow = sortedTimes[index1Percent];
 
-        float fpsMax = 1000.0f / (sortedTimes[0] > 0 ? sortedTimes[0] : 0.001f);
+        // Frame Time Min (Fastest frame)
+        float frameTimeMin = sortedTimes[0];
+
+        // FPS Metrics
+        float fpsMax = 1000.0f / (frameTimeMin > 0 ? frameTimeMin : 0.001f);
         float fpsAvg = 1000.0f / avgFrameTime;
         float fps1PercentLow = 1000.0f / frameTime1PercentLow;
 
@@ -262,12 +318,12 @@ public class PerformanceOverlayController : MonoBehaviour
         _sb.Append($"<b><size=120%>{_currentSceneName}</size></b>\n\n");
 
         _sb.Append("<b>FPS:</b>\n");
-        _sb.Append($"  Curr: <color=white>{currentFps:F0}</color> | Avg: <color=yellow>{fpsAvg:F0}</color> | 1% Low: <color=red>{fps1PercentLow:F0}</color>\n");
+        _sb.Append($"  Max: <color=green>{fpsMax:F0}</color> | Curr: <color=white>{currentFps:F0}</color> | Avg: <color=yellow>{fpsAvg:F0}</color> | 1% Low: <color=red>{fps1PercentLow:F0}</color>\n");
 
         _sb.Append("<b>Frame Time (ms):</b>\n");
-        _sb.Append($"  Curr: {currentDtMs:F2} | Avg: {avgFrameTime:F2} | Max: {frameTime1PercentLow:F2}\n");
+        _sb.Append($"  Min: {frameTimeMin:F2} | Curr: {currentDtMs:F2} | Avg: {avgFrameTime:F2} | Max (1%): {frameTime1PercentLow:F2}\n");
 
-        _sb.Append($"\n<b>Geometry (Tag: {targetTag}):</b>\n");
+        _sb.Append($"\n<b>Geometry ({(useTagFilter ? $"Tag: {targetTag}" : "Active Only")}):</b>\n");
         _sb.Append($"  Tris: {_currentSceneTriangles:N0}\n");
         _sb.Append($"  Verts: {_currentSceneVertices:N0}\n");
 
@@ -302,31 +358,42 @@ public class PerformanceOverlayController : MonoBehaviour
 
         if (statsText == null)
         {
+            // 1. Create Background Container (Parent) - Controls size and rendering order
+            // The Background is the PARENT, so it draws FIRST (behind text).
+            GameObject bgObj = new GameObject("StatsBackground");
+            bgObj.transform.SetParent(mainCanvas.transform, false);
+
+            Image bg = bgObj.AddComponent<Image>();
+            bg.color = new Color(0, 0, 0, 0.5f); // Semi-transparent grey
+
+            // 2. Add Layout Components to Auto-Size Background to Text
+            // This forces the background to hug the text content + padding.
+            VerticalLayoutGroup layout = bgObj.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(10, 10, 10, 10);
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            ContentSizeFitter csf = bgObj.AddComponent<ContentSizeFitter>();
+            csf.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            // 3. Position Top-Left
+            RectTransform bgRt = bgObj.GetComponent<RectTransform>();
+            bgRt.anchorMin = new Vector2(0, 1); // Top Left
+            bgRt.anchorMax = new Vector2(0, 1); // Top Left
+            bgRt.pivot = new Vector2(0, 1);     // Pivot Top Left
+            bgRt.anchoredPosition = new Vector2(10, -10); // Slight offset from corner
+
+            // 4. Create Text Object (Child of Background)
             GameObject textObj = new GameObject("StatsText");
-            textObj.transform.SetParent(mainCanvas.transform, false);
+            textObj.transform.SetParent(bgObj.transform, false);
+
             statsText = textObj.AddComponent<TextMeshProUGUI>();
             statsText.fontSize = 18;
             statsText.color = Color.white;
             statsText.alignment = TextAlignmentOptions.TopLeft;
-
-            RectTransform rt = statsText.rectTransform;
-            rt.anchorMin = new Vector2(0, 0);
-            rt.anchorMax = new Vector2(1, 1);
-            rt.pivot = new Vector2(0, 1);
-            rt.offsetMin = new Vector2(20, 20);
-            rt.offsetMax = new Vector2(-20, -20);
-
-            // Readable Background
-            GameObject bgObj = new GameObject("Background");
-            bgObj.transform.SetParent(textObj.transform, false);
-            bgObj.transform.SetAsFirstSibling();
-            Image bg = bgObj.AddComponent<Image>();
-            bg.color = new Color(0, 0, 0, 0.6f);
-            RectTransform bgRt = bg.rectTransform;
-            bgRt.anchorMin = new Vector2(0, 0);
-            bgRt.anchorMax = new Vector2(0.3f, 0.6f); // Top left corner area
-            bgRt.pivot = new Vector2(0, 1);
-            bgRt.anchoredPosition = Vector2.zero;
         }
     }
 }
