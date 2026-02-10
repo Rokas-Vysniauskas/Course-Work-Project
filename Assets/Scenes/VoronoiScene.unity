@@ -504,6 +504,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 4451612990180345884, guid: c9368385da9a11843b6c7bd02e4967c3, type: 3}
+      propertyPath: voronoiSiteCount
+      value: 225
+      objectReference: {fileID: 0}
     - target: {fileID: 7136609354570332379, guid: c9368385da9a11843b6c7bd02e4967c3, type: 3}
       propertyPath: m_Name
       value: Wall_Voronoi

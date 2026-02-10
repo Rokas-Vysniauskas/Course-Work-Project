@@ -504,6 +504,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: -4629681650779346881, guid: 99af50ba9be5f9b4fa285a5db1650da3, type: 3}
+      propertyPath: targetShards
+      value: 225
+      objectReference: {fileID: 0}
     - target: {fileID: 2639999826724240060, guid: 99af50ba9be5f9b4fa285a5db1650da3, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
